@@ -1,0 +1,42 @@
+/*
+ * CakePHP shell for migrationg a Wordpress database to Croogo
+ * Copyright (c) 2009 Matt Curry
+ * www.PseudoCoder.com
+ * http://github.com/mcurry/bye_wordpress
+ *
+ * @author      Matt Curry <matt@pseudocoder.com>
+ * @license     MIT
+ *
+ */
+
+/* Description */
+A CakePHP shell for migrationg a Wordpress database to Croogo.
+
+/* Warning */
+This is very basic at the moment.  It only migrates users, posts, terms and comments and probably misses a few fields on the way.
+
+/* Instructions */
+ 1. Download the and install croogo (http://www.croogo.org).
+ 2. Download the plugin to /app/plugins/bye_wordpress
+ 3. Run it cake/console/cake bye_wordpress
+ 
+/* Parameters */
+-host
+  Wordpress DB host.
+  defaults to localhost.
+
+-database
+  Wordpress DB name.
+  defaults to wordpress.
+
+-login
+  Wordpress DB login.
+  defaults to localhost.
+
+-password
+  Wordpress DB password.
+  defaults to empty.
+
+-prefix
+  Wordpress table prefix.
+  defaults to wp_.
