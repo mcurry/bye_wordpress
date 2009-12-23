@@ -125,11 +125,11 @@ class ByeWordpressShell extends Shell {
 			$post = Set::merge($defaultPost, array('Node' => $this->__remap(array(null, 'user_id', 'created', 'body', 'title', 'excerpt', 'status', 'comment_status',
 																																						'comment_count', 'updated', 'slug'), $wpPost['WpPost'])));
 			
-			
 			$post['Node']['user_id'] = $this->__remapValue($this->_userMap, $wpPost['WpPost']['post_author']);
 			$post['Node']['comment_status'] = $this->__remapValue(array('closed' => 0, '_default' => 2), $wpPost['WpPost']['comment_status']);
 			$post['Node']['status'] = $this->__remapValue(array('private' => 0, '_default' => 1), $wpPost['WpPost']['post_status']);
 			$post['Node']['promote'] = $this->__remapValue(array('private' => 0, '_default' => 1), $wpPost['WpPost']['post_status']);
+				
 			$this->Node->create();
 			if($this->Node->save($post)) {
 				$this->_postMap[$wpPost['WpPost']['ID']] = $this->Node->id;
@@ -165,14 +165,18 @@ class ByeWordpressShell extends Shell {
 		
 		$sql = sprintf('SELECT `comment_ID`, `user_id`, `comment_parent`, `comment_post_ID`, `comment_author`, `comment_author_email`, `comment_author_url`,
 									 `comment_author_IP`, `comment_date`, `comment_content`, `comment_karma`, `comment_approved`, `comment_type`
-									 FROM %scomments AS WpComment', $this->options['prefix']);
+									 FROM %scomments AS WpComment
+									 WHERE comment_approved = 1', $this->options['prefix']);
 		$wpComments = $this->db->query($sql);
 		
 		$comments = $this->Node->Comment->find('all', array('recursive' => -1));
 		
 		$count = 0;
 		foreach($wpComments as $wpComment) {
-			$oldComment = Set::extract('/Comment[body=' . $wpComment['WpComment']['comment_content'] . ']/..', $comments);
+			$oldComment = null;
+			if($comments) {
+				$oldComment = Set::extract('/Comment[body=' . $wpComment['WpComment']['comment_content'] . ']/..', $comments);
+			}
 			if($oldComment) {
 				$defaultComment = array_merge($defaults, array_shift($oldComment)); 
 			} else {
@@ -182,10 +186,15 @@ class ByeWordpressShell extends Shell {
 			$comment = Set::merge($defaultComment, array('Comment' => $this->__remap(array(null, 'user_id', 'parent_id', 'node_id', 'name', 'email', 'website', 'ip', 'created',
 																																									'body', 'rating', 'status', 'comment_type'), $wpComment['WpComment'])));
 			$comment['Comment']['node_id'] = $this->__remapValue($this->_postMap, $wpComment['WpComment']['comment_post_ID']);
-			$comment['Comment']['user_id'] = $this->__remapValue(array_merge(array('_default' => 0), $this->_userMap), $wpComment['WpComment']['user_id']);
+					
+			$comment['Comment']['user_id'] = $this->__remapValue(array('_default' => 0) + $this->_userMap, $wpComment['WpComment']['user_id']);
 			$comment['Comment']['parent_id'] = $this->__remapValue($this->_commentMap, $wpComment['WpComment']['comment_parent']);
 			if(empty($comment['Comment']['comment_type'])) {
 				$comment['Comment']['comment_type'] = 'comment';
+			}
+
+			if(empty($comment['Comment']['node_id'])) {
+				continue;
 			}
 			
 			$this->Node->Comment->create();
@@ -215,7 +224,7 @@ class ByeWordpressShell extends Shell {
 			return $options[$value];
 		}
 		
-		if(!empty($options['_default'])) {
+		if(isset($options['_default'])) {
 			return $options['_default'];
 		}
 		
