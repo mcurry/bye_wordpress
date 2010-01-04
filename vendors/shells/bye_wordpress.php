@@ -48,21 +48,22 @@ class ByeWordpressShell extends Shell {
 	}
 	
 	function __convertUsers() {
-		$defaults = array('User' => array('password' => Security::hash(time() + rand(0, 4949494) + uniqid(), null, true),
+		$defaults = array('password' => Security::hash(time() + rand(0, 4949494) + uniqid(), null, true),
 																			'role_id' => 2,
-																			'status' => 1));
+																			'status' => 1);
 		
 		$sql = sprintf('SELECT `ID`, `user_login`, `display_name`, `user_email`, `user_url`, `user_registered` FROM %susers AS WpUser', $this->options['prefix']);
 		$wpUsers = $this->db->query($sql);
 		$users = $this->Node->User->find('all', array('recursive' => -1));
-
+		$users = $this->__createHash($users, 'User', 'username');
+		
 		$count = 0;
 		foreach($wpUsers as $wpUser) {
-			$oldUser = Set::extract('/User[username=' . $wpUser['WpUser']['user_login'] . ']/..', $users);
-			if($oldUser) {
-				$defaultUser = array_merge($defaults, array_shift($oldUser)); 
+			$key = md5($wpUser['WpUser']['user_login']);
+			if(!empty($users[$key])) {
+				$defaultUser = array('User' => array_merge($defaults, array_shift($users[$key]))); 
 			} else {
-				$defaultUser = $defaults; 
+				$defaultUser = array('User' => $defaults); 
 			}
 			
 			$user = Set::merge($defaultUser, array('User' => $this->__remap(array(null, 'username', 'name', 'email', 'website', 'created'), $wpUser['WpUser'])));
@@ -77,59 +78,62 @@ class ByeWordpressShell extends Shell {
 	}
 
 	function __convertTerms() {
-		$defaults = array('Term' => array('vocabulary_id' => 1,
-																			'status' => 1));
+		$defaults = array('vocabulary_id' => 1,
+																			'status' => 1);
 		
 		$sql = sprintf('SELECT `term_id`, `name`, `slug` FROM %sterms AS WpTerm', $this->options['prefix']);
 		$wpTerms = $this->db->query($sql);
 		$terms = $this->Node->Term->find('all', array('recursive' => -1));
+		$terms = $this->__createHash($terms, 'Term', 'slug');
 		
 		$count = 0;
 		foreach($wpTerms as $wpTerm) {
-			$oldTerm = Set::extract('/Term[slug=' . $wpTerm['WpTerm']['slug'] . ']/..', $terms);
-			if($oldTerm) {
-				$defaultTerm = array_merge($defaults, array_shift($oldTerm)); 
+			$key = md5($wpTerm['WpTerm']['slug']);
+			if(!empty($terms[$key])) {
+				$defaultTerm = array_merge($defaults, array_shift($terms[$key])); 
 			} else {
 				$defaultTerm = $defaults; 
 			}
 			
-			$term = Set::merge($defaultTerm, array('Term' => $this->__remap(array(null, 'title', 'slug'), $wpTerm['WpTerm'])));
+			$term = array('Term' => array_merge($defaultTerm, $this->__remap(array(null, 'title', 'slug'), $wpTerm['WpTerm'])));
+
 			$this->Node->Term->create();
 			if($this->Node->Term->save($term)) {
 				$this->_termMap[$wpTerm['WpTerm']['term_id']] = $this->Node->Term->id;
 				$count ++;
 			}
 		}
-		
+
 		$this->out(sprintf('Moved %d terms', $count));
 	}
 	
 	function __convertPosts() {
-		$defaults = array('Node' => array('type' => 'blog'));
+		$defaults = array('type' => 'blog');
 		
 		$sql = sprintf('SELECT `ID`, `post_author`, `post_date`, `post_content`, `post_title`, `post_excerpt`, `post_status`,
 									 `comment_status`, `comment_count`, `post_modified`, `post_name` FROM %sposts AS WpPost
 									 WHERE post_type = "post"', $this->options['prefix']);
 		$wpPosts = $this->db->query($sql);
 		$nodes = $this->Node->find('all', array('recursive' => -1));
-
+		$nodes = $this->__createHash($nodes, 'Node', 'slug');
+		
 		$count = 0;
 		foreach($wpPosts as $wpPost) {
-			$oldPost = Set::extract('/Node[slug=' . $wpPost['WpPost']['post_name'] . ']/..', $nodes);
-			if($oldPost) {
-				$defaultPost = array_merge($defaults, array_shift($oldPost)); 
+			$key = md5($wpPost['WpPost']['post_name']);
+			if(!empty($nodes[$key])) {
+				$defaultPost = array_merge($defaults, array_shift($nodes[$key])); 
 			} else {
 				$defaultPost = $defaults; 
 			}
 			
-			$post = Set::merge($defaultPost, array('Node' => $this->__remap(array(null, 'user_id', 'created', 'body', 'title', 'excerpt', 'status', 'comment_status',
+			$post =  array('Node' => array_merge($defaultPost, $this->__remap(array(null, 'user_id', 'created', 'body', 'title', 'excerpt', 'status', 'comment_status',
 																																						'comment_count', 'updated', 'slug'), $wpPost['WpPost'])));
 			
 			$post['Node']['user_id'] = $this->__remapValue($this->_userMap, $wpPost['WpPost']['post_author']);
 			$post['Node']['comment_status'] = $this->__remapValue(array('closed' => 0, '_default' => 2), $wpPost['WpPost']['comment_status']);
 			$post['Node']['status'] = $this->__remapValue(array('private' => 0, '_default' => 1), $wpPost['WpPost']['post_status']);
 			$post['Node']['promote'] = $this->__remapValue(array('private' => 0, '_default' => 1), $wpPost['WpPost']['post_status']);
-				
+						
 			$this->Node->create();
 			if($this->Node->save($post)) {
 				$this->_postMap[$wpPost['WpPost']['ID']] = $this->Node->id;
@@ -161,33 +165,33 @@ class ByeWordpressShell extends Shell {
 	}
 	
 	function __convertComments() {
-		$defaults = array('Comment' => array('type' => 'blog'));
+		$defaults = array('type' => 'blog');
 		
 		$sql = sprintf('SELECT `comment_ID`, `user_id`, `comment_parent`, `comment_post_ID`, `comment_author`, `comment_author_email`, `comment_author_url`,
 									 `comment_author_IP`, `comment_date`, `comment_content`, `comment_karma`, `comment_approved`, `comment_type`
 									 FROM %scomments AS WpComment
-									 WHERE comment_approved = 1', $this->options['prefix']);
+									 WHERE comment_approved = 1
+									 ORDER BY comment_ID ASC', $this->options['prefix']);
 		$wpComments = $this->db->query($sql);
 		
 		$comments = $this->Node->Comment->find('all', array('recursive' => -1));
+		$comments = $this->__createHash($comments, 'Comment', 'body');
 		
 		$count = 0;
 		foreach($wpComments as $wpComment) {
-			$oldComment = null;
-			if($comments) {
-				$oldComment = Set::extract('/Comment[body=' . $wpComment['WpComment']['comment_content'] . ']/..', $comments);
-			}
-			if($oldComment) {
-				$defaultComment = array_merge($defaults, array_shift($oldComment)); 
+			$key = md5($wpComment['WpComment']['comment_content']);
+			if(!empty($comments[$key])) {
+				$defaultComment = array_merge($defaults, array_shift($comments[$key])); 
 			} else {
 				$defaultComment = $defaults; 
 			}
 			
-			$comment = Set::merge($defaultComment, array('Comment' => $this->__remap(array(null, 'user_id', 'parent_id', 'node_id', 'name', 'email', 'website', 'ip', 'created',
+			$comment =  array('Comment' => array_merge($defaultComment, $this->__remap(array(null, 'user_id', 'parent_id', 'node_id', 'name', 'email', 'website', 'ip', 'created',
 																																									'body', 'rating', 'status', 'comment_type'), $wpComment['WpComment'])));
 			$comment['Comment']['node_id'] = $this->__remapValue($this->_postMap, $wpComment['WpComment']['comment_post_ID']);
 					
 			$comment['Comment']['user_id'] = $this->__remapValue(array('_default' => 0) + $this->_userMap, $wpComment['WpComment']['user_id']);
+			
 			$comment['Comment']['parent_id'] = $this->__remapValue($this->_commentMap, $wpComment['WpComment']['comment_parent']);
 			if(empty($comment['Comment']['comment_type'])) {
 				$comment['Comment']['comment_type'] = 'comment';
@@ -203,7 +207,7 @@ class ByeWordpressShell extends Shell {
 				$count ++;
 			}
 		}
-		
+
 		$this->out(sprintf('Moved %d comments', $count));
 	}
 	
@@ -231,6 +235,17 @@ class ByeWordpressShell extends Shell {
 		return null;
 	}
 	
+	function __createHash($values, $model, $field) {
+		$hash = array();
+		
+		foreach($values as $value) {
+			$key = md5($value[$model][$field]);
+			$hash[$key] = $value;
+		}
+		
+		return $hash;
+	}
+
 	function help() {
 		$this->out('Croogo Bye Wordpress Shell');
 		$this->hr();
