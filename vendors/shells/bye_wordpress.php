@@ -42,6 +42,7 @@ class ByeWordpressShell extends Shell {
 	function __convert() {
 		$this->__convertUsers();
 		$this->__convertTerms();
+		$this->__convertAttachments();
 		$this->__convertPosts();
 		$this->__convertTermPosts();
 		$this->__convertComments();
@@ -106,6 +107,46 @@ class ByeWordpressShell extends Shell {
 
 		$this->out(sprintf('Moved %d terms', $count));
 	}
+
+	function __convertAttachments() {
+		$defaults = array('type' => 'attachment');
+		App::import('Core', array('Controller'));
+		App::import('View', array('View', 'Media'));
+		$fakeController = new Controller();
+		$mediaView = new MediaView($fakeController);
+		
+		$sql = sprintf('SELECT `meta_value` FROM %spostmeta AS WpMeta WHERE meta_key = "_wp_attachment_metadata"', $this->options['prefix']);
+		$wpMetas = $this->db->query($sql);
+		
+		$attachments = $this->Node->find('all', array('recursive' => -1, 'conditions' => array('type' => 'attachment')));
+		$attachments = $this->__createHash($attachments, 'Node', 'path');
+
+		$count = 0;
+		foreach($wpMetas as $wpMeta) {
+			$wpMeta['WpMeta'] = unserialize($wpMeta['WpMeta']['meta_value']);
+			
+			$key = md5($wpMeta['WpMeta']['file']);
+			if(!empty($attachments[$key])) {
+				$defaultAttachment = array_merge($defaults, array_shift($attachments[$key])); 
+			} else {
+				$defaultAttachment = $defaults; 
+			}
+			
+			$fileinfo = pathinfo($wpMeta['WpMeta']['file']);
+
+			
+			$attachment = array('Node' => array_merge($defaultAttachment, array('title' => $fileinfo['filename'],
+																																					'slug' => $wpMeta['WpMeta']['file'],
+																																					'mime_type' => $mediaView->mimeType[$fileinfo['extension']],
+																																					'path' => '/uploads/' . $wpMeta['WpMeta']['file'])));
+			$this->Node->create();
+			if($this->Node->save($attachment)) {
+				$count ++;
+			}
+		}
+		
+		$this->out(sprintf('Moved %d attachments', $count));
+	}
 	
 	function __convertPosts() {
 		$defaults = array('type' => 'blog');
@@ -126,14 +167,15 @@ class ByeWordpressShell extends Shell {
 				$defaultPost = $defaults; 
 			}
 			
-			$post =  array('Node' => array_merge($defaultPost, $this->__remap(array(null, 'user_id', 'created', 'body', 'title', 'excerpt', 'status', 'comment_status',
+			$post = array('Node' => array_merge($defaultPost, $this->__remap(array(null, 'user_id', 'created', 'body', 'title', 'excerpt', 'status', 'comment_status',
 																																						'comment_count', 'updated', 'slug'), $wpPost['WpPost'])));
 			
 			$post['Node']['user_id'] = $this->__remapValue($this->_userMap, $wpPost['WpPost']['post_author']);
 			$post['Node']['comment_status'] = $this->__remapValue(array('closed' => 0, '_default' => 2), $wpPost['WpPost']['comment_status']);
 			$post['Node']['status'] = $this->__remapValue(array('private' => 0, '_default' => 1), $wpPost['WpPost']['post_status']);
 			$post['Node']['promote'] = $this->__remapValue(array('private' => 0, '_default' => 1), $wpPost['WpPost']['post_status']);
-						
+			$post['Node']['body'] = str_replace('wp-content/', '', $post['Node']['body']);
+				
 			$this->Node->create();
 			if($this->Node->save($post)) {
 				$this->_postMap[$wpPost['WpPost']['ID']] = $this->Node->id;
