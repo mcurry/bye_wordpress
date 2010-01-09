@@ -137,7 +137,6 @@ class ByeWordpressShell extends Shell {
 				$defaultAttachment = $defaults;
 			}
 
-
 			$fileinfo = pathinfo($wpMeta['WpMeta']['file']);
 
 			$mimeType = '';
