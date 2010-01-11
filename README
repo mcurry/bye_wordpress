@@ -10,10 +10,15 @@
  */
 
 /* Description */
-A CakePHP shell for migrationg a Wordpress database to Croogo.
+A CakePHP shell for migrationg a Wordpress (tested on v2.8.6) database to Croogo.
 
 /* Warning */
-This is very basic at the moment.  It only migrates users, posts, terms and comments and probably misses a few fields on the way.
+I'm done with this code.  I migrated my two sites, so I have no reason to keep it up.
+
+/* Gotchas */
+* Make sure the two databases have the same character encoding.
+* Uploaded files aren't moved - just the DB record.  Make sure to manually copy /wp-content/uploads to /app/webroot/uploads
+* If you use Tags and Catagories in WordPress everything will become a Catagory in Croogo.  I'm to lazy to fix and I never used WordPress tags so it didn't matter to me.
 
 /* Instructions */
  1. Download the and install croogo (http://www.croogo.org).
