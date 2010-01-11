@@ -19,6 +19,7 @@ I'm done with this code.  I migrated my two sites, so I have no reason to keep i
 * Make sure the two databases have the same character encoding.
 * Uploaded files aren't moved - just the DB record.  Make sure to manually copy /wp-content/uploads to /app/webroot/uploads
 * If you use Tags and Catagories in WordPress everything will become a Catagory in Croogo.  I'm to lazy to fix and I never used WordPress tags so it didn't matter to me.
+* Draft posts aren't moved.
 
 /* Instructions */
  1. Download the and install croogo (http://www.croogo.org).
