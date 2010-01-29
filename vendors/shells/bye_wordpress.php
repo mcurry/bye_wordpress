@@ -11,17 +11,17 @@ class ByeWordpressShell extends Shell {
 	var $_commentMap = array();
 
 	var $options = array();
-	var $_defaults = array('driver' => 'mysql',
-												 'host' => 'localhost',
-												 'database' => 'wordpress',
-												 'login' => 'root',
-												 'password' => '',
-												 'prefix' => 'wp_');
+	var $_defaults = array( 'driver' => 'mysql',
+                            'host' => 'localhost',
+                            'database' => 'wordpress',
+                            'login' => 'root',
+                            'password' => '',
+                            'prefix' => 'wp_');
 	function main() {
 		$this->options = array_merge($this->_defaults, array_intersect_key($this->params, $this->_defaults));
 
 		$confirm = strtoupper($this->in(sprintf('Convert Wordpress database (%s:%s@%s/%s) to Croogo?',
-																						$this->options['login'], $this->options['password'], $this->options['host'], $this->options['database']), array('Y', 'N')));
+                                $this->options['login'], $this->options['password'], $this->options['host'], $this->options['database']), array('Y', 'N')));
 		switch (strtolower($confirm)) {
 			case 'y':
 				App::import('Core', 'ConnectionManager');
@@ -56,7 +56,7 @@ class ByeWordpressShell extends Shell {
 		$sql = sprintf('SELECT `ID`, `user_login`, `display_name`, `user_email`, `user_url`, `user_registered` FROM %susers AS WpUser', $this->options['prefix']);
 		$wpUsers = $this->db->query($sql);
 		$users = $this->Node->User->find('all', array('recursive' => -1));
-		$users = $this->__createHash($users, 'User', 'username');
+		$users = $this->__createHash($users, 'User.username');
 
 		$count = 0;
 		foreach($wpUsers as $wpUser) {
@@ -68,6 +68,7 @@ class ByeWordpressShell extends Shell {
 			}
 
 			$user = Set::merge($defaultUser, array('User' => $this->__remap(array(null, 'username', 'name', 'email', 'website', 'created'), $wpUser['WpUser'])));
+
 			$this->Node->User->create();
 			if ($this->Node->User->save($user)) {
 				$this->_userMap[$wpUser['WpUser']['ID']] = $this->Node->User->id;
@@ -80,16 +81,31 @@ class ByeWordpressShell extends Shell {
 
 	function __convertTerms() {
 		$defaults = array('vocabulary_id' => 1,
-											'status' => 1);
-
-		$sql = sprintf('SELECT `term_id`, `name`, `slug` FROM %sterms AS WpTerm', $this->options['prefix']);
+                          'status' => 1);
+		$sql = sprintf('SELECT WpTerm.term_id, WpTerm.name, WpTerm.slug, WpTermTaxonomy.taxonomy FROM %1$sterms AS WpTerm LEFT JOIN %1$sterm_taxonomy AS WpTermTaxonomy ON (WpTerm.term_id=WpTermTaxonomy.term_id)', $this->options['prefix']);
 		$wpTerms = $this->db->query($sql);
-		$terms = $this->Node->Term->find('all', array('recursive' => -1));
-		$terms = $this->__createHash($terms, 'Term', 'slug');
+
+		$terms = $this->Node->Term->find('all', array('contain'=>'Vocabulary'));
+		$terms = $this->__createHash($terms, array('Term.slug','Vocabulary.alias'));
+
+        $vocabularies = $this->Node->Term->Vocabulary->find('list', array('contain'=>false, 'fields'=>array('id','alias')));
 
 		$count = 0;
 		foreach($wpTerms as $wpTerm) {
-			$key = md5($wpTerm['WpTerm']['slug']);
+		    // get WP taxonomy
+		    $WpTaxonomy = $wpTerm['WpTermTaxonomy']['taxonomy'];
+            // remap those to default Croogo vocabulary alias
+            $remap_taxonomy = array(
+                'link_category'=>'categories',
+                'category'=>'categories',
+                'post_tag'=>'tags',
+            );
+            $voca = $remap_taxonomy[$WpTaxonomy];
+            if ($voca) {
+                $defaults['vocabulary_id'] = array_search($voca, $vocabularies);
+            }
+            // make key based on vocabulary and lsug
+			$key = md5($wpTerm['WpTerm']['slug'].$wpTerm['WpTermTaxonomy']['taxonomy']);
 			if (!empty($terms[$key])) {
 				$defaultTerm = array_merge($defaults, array_shift($terms[$key]));
 			} else {
@@ -119,7 +135,7 @@ class ByeWordpressShell extends Shell {
 		$wpMetas = $this->db->query($sql);
 
 		$attachments = $this->Node->find('all', array('recursive' => -1, 'conditions' => array('type' => 'attachment')));
-		$attachments = $this->__createHash($attachments, 'Node', 'slug');
+		$attachments = $this->__createHash($attachments, 'Node.slug');
 
 		$count = 0;
 		foreach($wpMetas as $wpMeta) {
@@ -165,9 +181,10 @@ class ByeWordpressShell extends Shell {
 									 WHERE post_type IN ("page", "post") AND post_status != "draft"', $this->options['prefix']);
 		$wpPosts = $this->db->query($sql);
 		$nodes = $this->Node->find('all', array('conditions' => array('type' => array('blog', 'page')), 'recursive' => -1));
-		$nodes = $this->__createHash($nodes, 'Node', 'slug');
-
+		$nodes = $this->__createHash($nodes, 'Node.slug');
+		
 		$count = 0;
+
 		foreach($wpPosts as $wpPost) {
 			$key = md5($wpPost['WpPost']['post_name']);
 			if (!empty($nodes[$key])) {
@@ -187,7 +204,6 @@ class ByeWordpressShell extends Shell {
 			$post['Node']['body'] = $this->wpautop(str_replace('wp-content/', '', $post['Node']['body']));
 			
 			//$post['Node']['body'] = str_replace('<pre name="code" class="', '<pre class="brush: ', $post['Node']['body'], $stcount);
-
 			$this->Node->create();
 			if ($this->Node->save($post)) {
 				$this->_postMap[$wpPost['WpPost']['ID']] = $this->Node->id;
@@ -229,7 +245,7 @@ class ByeWordpressShell extends Shell {
 		$wpComments = $this->db->query($sql);
 
 		$comments = $this->Node->Comment->find('all', array('recursive' => -1));
-		$comments = $this->__createHash($comments, 'Comment', 'body');
+		$comments = $this->__createHash($comments, 'Comment.body');
 
 		$count = 0;
 		foreach($wpComments as $wpComment) {
@@ -298,14 +314,33 @@ class ByeWordpressShell extends Shell {
 		return null;
 	}
 
-	function __createHash($values, $model, $field) {
+    /**
+     * create unique has for strings
+     *
+     * @param array $values 
+     * @param mixed $fields string with Model.field or array of such 
+     * @return array
+     */
+	function __createHash($values, $fields) {
 		$hash = array();
 
-		foreach($values as $value) {
-			$key = md5($value[$model][$field]);
-			$hash[$key] = $value;
-		}
-
+        if (is_array($fields)) {
+            foreach($values as $value) {
+                $unhashed = '';
+    	        foreach ($fields AS $f) {
+                    list($model,$field) = explode('.', $f);
+                    $unhashed .= $value[$model][$field];
+                }
+                $key = md5($unhashed);
+    			$hash[$key] = $value;
+    		}
+        } else {
+            list($model,$field) = explode('.', $fields);
+            foreach($values as $value) {
+    	        $key = md5($value[$model][$field]);
+    			$hash[$key] = $value;
+    		}
+        }
 		return $hash;
 	}
 
